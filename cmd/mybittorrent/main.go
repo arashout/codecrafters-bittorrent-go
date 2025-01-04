@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -42,14 +43,14 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 }
 
 type MetaInfoFile struct {
-	Announce string       `json:"announce"`
-	Info     MetaInfoInfo `json:"info"`
+	Announce string       `bencode:"announce"`
+	Info     MetaInfoInfo `bencode:"info"`
 }
 type MetaInfoInfo struct {
-	Length      int    `json:"length"`
-	Name        string `json:"name"`
-	PieceLength int    `json:"piece length"`
-	Pieces      string `json:"pieces"`
+	Length      int    `bencode:"length"`
+	Name        string `bencode:"name"`
+	PieceLength int    `bencode:"piece length"`
+	Pieces      string `bencode:"pieces"`
 }
 
 func main() {
@@ -84,7 +85,14 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Tracker URL: %s\nLength: %d", metaInfoFile.Announce, metaInfoFile.Info.Length)
+
+		// Calculate info hash
+		h := sha1.New()
+		if err = bencode.Marshal(h, metaInfoFile.Info); err != nil {
+			panic(err)
+		}
+
+		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %x", metaInfoFile.Announce, metaInfoFile.Info.Length, h.Sum(nil))
 
 	default:
 		fmt.Println("Unknown command: " + command)
