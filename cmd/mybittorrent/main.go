@@ -93,6 +93,10 @@ func main() {
 		}
 
 		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %x", metaInfoFile.Announce, metaInfoFile.Info.Length, h.Sum(nil))
+		fmt.Printf("Piece Length: %d\nPiece Hashes:\n", metaInfoFile.Info.PieceLength)
+		for i := 0; i < len(metaInfoFile.Info.Pieces); i += 20 {
+			fmt.Printf("%x\n", metaInfoFile.Info.Pieces[i:i+20])
+		}
 
 	default:
 		fmt.Println("Unknown command: " + command)
