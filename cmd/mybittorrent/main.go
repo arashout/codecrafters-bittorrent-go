@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"unicode"
-	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
+
+	bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
 // Ensures gofmt doesn't remove the "os" encoding/json import (feel free to remove this!)
@@ -47,14 +49,13 @@ func main() {
 
 	if command == "decode" {
 		bencodedValue := os.Args[2]
-
-		decoded, err := decodeBencode(bencodedValue)
+		data, err := bencode.Decode(bytes.NewBufferString(bencodedValue))
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		jsonOutput, _ := json.Marshal(decoded)
+		jsonOutput, _ := json.Marshal(data)
 		fmt.Println(string(jsonOutput))
 	} else {
 		fmt.Println("Unknown command: " + command)
