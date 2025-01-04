@@ -84,8 +84,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		jsonOutput, _ := json.Marshal(metaInfoFile)
-		fmt.Println(string(jsonOutput))
+		fmt.Printf("Tracker URL: %s\nLength: %d", metaInfoFile.Announce, metaInfoFile.Info.Length)
 
 	default:
 		fmt.Println("Unknown command: " + command)
