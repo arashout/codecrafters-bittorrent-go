@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,8 +11,10 @@ import (
 	bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
-// Ensures gofmt doesn't remove the "os" encoding/json import (feel free to remove this!)
-var _ = json.Marshal
+const (
+	defaultPort = 6881
+	peerID      = "ash___out_1234567890"
+)
 
 // Example:
 // - 5:hello -> hello
@@ -79,24 +80,16 @@ func main() {
 		}
 		defer file.Close()
 
-		metaInfoFile := MetaInfoFile{}
-		err = bencode.Unmarshal(file, &metaInfoFile)
+		info(file, true)
+	case "peers":
+		filename := os.Args[2]
+		file, err := os.Open(filename)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-
-		// Calculate info hash
-		h := sha1.New()
-		if err = bencode.Marshal(h, metaInfoFile.Info); err != nil {
-			panic(err)
-		}
-
-		fmt.Printf("Tracker URL: %s\nLength: %d\nInfo Hash: %x", metaInfoFile.Announce, metaInfoFile.Info.Length, h.Sum(nil))
-		fmt.Printf("Piece Length: %d\nPiece Hashes:\n", metaInfoFile.Info.PieceLength)
-		for i := 0; i < len(metaInfoFile.Info.Pieces); i += 20 {
-			fmt.Printf("%x\n", metaInfoFile.Info.Pieces[i:i+20])
-		}
+		defer file.Close()
+		peers(file, true)
 
 	default:
 		fmt.Println("Unknown command: " + command)
