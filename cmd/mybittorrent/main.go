@@ -90,6 +90,22 @@ func main() {
 		}
 		defer file.Close()
 		peers(file, true)
+	case "handshake":
+		filename := os.Args[2]
+		file, err := os.Open(filename)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer file.Close()
+
+		address := os.Args[3]
+		infoRes := info(file, false)
+
+		conn := connect(address)
+
+		res := handshake(conn, infoRes.InfoHash, []byte(peerID))
+		fmt.Printf("Peer ID: %x\n", res.PeerID)
 
 	default:
 		fmt.Println("Unknown command: " + command)
