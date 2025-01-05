@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -11,11 +12,28 @@ import (
 	bencode "github.com/jackpal/bencode-go"
 )
 
+type Peer struct {
+	IP   net.IP
+	Port uint16
+}
 type PeersResult struct {
+	Peers    []Peer
+	Interval int
 }
 
-func peers(file *os.File, showOutput bool) PeersResult {
-	infoRes := info(file, false)
+func (p Peer) String() string {
+	return fmt.Sprintf("%s:%d", p.IP, p.Port)
+}
+func (p PeersResult) Print() {
+	// Print the IP address and port number in the format "IP:port"
+	for _, peer := range p.Peers {
+		fmt.Println(peer.String())
+	}
+
+}
+
+func peers(file *os.File) PeersResult {
+	infoRes := info(file)
 	params := url.Values{}
 	params.Add("info_hash", string(infoRes.InfoHash))
 	params.Add("peer_id", peerID)
@@ -30,13 +48,8 @@ func peers(file *os.File, showOutput bool) PeersResult {
 	check(err)
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		fmt.Println("Error: " + resp.Status)
+		check(fmt.Errorf("Expected status code 200, got %d", resp.StatusCode))
 	}
-
-	// Read the response body
-	// body, err := ioutil.ReadAll(resp.Body)
-	// check(err)
-	// fmt.Println(string(body))
 
 	type TrackerResponse struct {
 		Interval int    `bencode:"interval"`
@@ -48,13 +61,20 @@ func peers(file *os.File, showOutput bool) PeersResult {
 	// Each peer is 6 bytes:
 	//  - 4 bytes for IP address
 	//  - 2 bytes for port
+	res := PeersResult{
+		Interval: trackerResp.Interval,
+		Peers:    []Peer{},
+	}
 	for i := 0; i < len(trackerResp.Peers); i += 6 {
 		ip := trackerResp.Peers[i : i+4]
 		portBytes := []byte(trackerResp.Peers[i+4 : i+6])
 		port := binary.BigEndian.Uint16(portBytes)
-		fmt.Printf("%d.%d.%d.%d:%d\n", ip[0], ip[1], ip[2], ip[3], port)
+		res.Peers = append(res.Peers, Peer{
+			IP:   net.IP(ip),
+			Port: port,
+		})
 	}
 
 	defer resp.Body.Close()
-	return PeersResult{}
+	return res
 }

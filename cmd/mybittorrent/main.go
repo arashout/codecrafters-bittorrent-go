@@ -80,7 +80,9 @@ func main() {
 		}
 		defer file.Close()
 
-		info(file, true)
+		res := info(file)
+		res.Print()
+
 	case "peers":
 		filename := os.Args[2]
 		file, err := os.Open(filename)
@@ -89,7 +91,8 @@ func main() {
 			return
 		}
 		defer file.Close()
-		peers(file, true)
+		res := peers(file)
+		res.Print()
 	case "handshake":
 		filename := os.Args[2]
 		file, err := os.Open(filename)
@@ -100,7 +103,7 @@ func main() {
 		defer file.Close()
 
 		address := os.Args[3]
-		infoRes := info(file, false)
+		infoRes := info(file)
 
 		conn := connect(address)
 
