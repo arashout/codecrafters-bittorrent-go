@@ -5,3 +5,10 @@ func check(e error) {
 		panic(e)
 	}
 }
+
+// Assert panics if condition is false.
+func Assert(condition bool, message string) {
+	if !condition {
+		panic("Assertion failed: " + message)
+	}
+}

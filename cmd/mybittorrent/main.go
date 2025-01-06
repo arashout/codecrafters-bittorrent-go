@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"unicode"
@@ -13,7 +15,7 @@ import (
 
 const (
 	defaultPort = 6881
-	peerID      = "ash___out_1234567890"
+	myPeerID    = "ash___out_1234567890"
 )
 
 // Example:
@@ -103,12 +105,38 @@ func main() {
 		defer file.Close()
 
 		address := os.Args[3]
+		peerAddress, err := net.ResolveUDPAddr("udp", address)
+		check(err)
 		infoRes := info(file)
+		peer := NewPeer(
+			PeerAddress{
+				IP:   peerAddress.IP,
+				Port: uint16(peerAddress.Port),
+			}, infoRes,
+		)
 
-		conn := connect(address)
-
-		res := handshake(conn, infoRes.InfoHash, []byte(peerID))
+		res := peer.Handshake(infoRes)
 		fmt.Printf("Peer ID: %x\n", res.PeerID)
+	case "download_piece":
+		// -o <output_file> <torrent_file> <piece_index>
+		fs := flag.NewFlagSet("download_piece", flag.ExitOnError)
+		outputFilename := fs.String("o", "", "Output filename")
+
+		// Parse flags starting AFTER the subcommand name
+		fs.Parse(os.Args[2:])
+
+		// Now fs.Args() holds the positional args AFTER we parse flags
+		args := fs.Args()
+		if len(args) < 2 {
+			fmt.Println("Usage: download_piece -o <output> <torrent_file> <piece_index>")
+			os.Exit(1)
+		}
+		torrentFile := args[0]
+		pieceIndex := args[1]
+
+		pieceIndexInt, err := strconv.ParseInt(pieceIndex, 10, 32)
+		check(err)
+		downloadPiece(torrentFile, *outputFilename, pieceIndexInt)
 
 	default:
 		fmt.Println("Unknown command: " + command)
