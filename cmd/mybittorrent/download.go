@@ -20,5 +20,5 @@ func downloadPiece(torrentFile string, outputFile string, pieceIndex int64) {
 	out, err := os.Create(outputFile)
 	check(err)
 
-	p.DownloadPiece(out, pieceIndex, peersRes.InfoResult.MetaInfoFile.Info.PieceLength)
+	p.DownloadPiece(out, uint32(pieceIndex), uint32(peersRes.InfoResult.MetaInfoFile.Info.PieceLength))
 }

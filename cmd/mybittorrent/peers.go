@@ -15,6 +15,10 @@ import (
 	bencode "github.com/jackpal/bencode-go"
 )
 
+const (
+	blockSize = uint32(1024 * 16) // 16 KiB
+)
+
 type PeerAddress struct {
 	IP   net.IP
 	Port uint16
@@ -31,11 +35,11 @@ func (p PeersResult) Print() {
 }
 
 type PeerMessage struct {
-	Length  int    // 4 bytes
-	ID      int    // 1 byte
+	Length  uint32 // 4 bytes
+	ID      uint8  // 1 byte
 	Payload []byte // variable length
 }
-type PeerMessageType int
+type PeerMessageType = uint8
 
 const (
 	Choke         PeerMessageType = 0
@@ -49,16 +53,8 @@ const (
 	Cancel        PeerMessageType = 8
 )
 
-func parsePeerMessage(data []byte) PeerMessage {
-	return PeerMessage{
-		Length:  int(binary.BigEndian.Uint32(data[0:4])),
-		ID:      int(data[4]), // Tells you the message type
-		Payload: data[5:],
-	}
-}
-
 func (p PeerMessage) Generate() []byte {
-	length := 1 + len(p.Payload)
+	length := 5 + len(p.Payload) // 4 bytes for length, 1 byte for ID, and variable length for payload
 	buf := make([]byte, length)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(length))
 	buf[4] = byte(p.ID)
@@ -111,24 +107,92 @@ func (p *Peer) Handshake(infoRes InfoResult) HandshakeResult {
 	}
 }
 func (p *Peer) ReadMessage() PeerMessage {
-	// Create a buffered reader
+	// Read the reserved length prefix first (4 bytes) to determine how big our other buffer should be
 	reader := bufio.NewReader(p.conn)
-	buf := make([]byte, 1024) // TODO: Is this enough?
-	n, err := reader.Read(buf)
+	lengthBuf := make([]byte, 4)
+	_, err := io.ReadFull(reader, lengthBuf)
 	check(err)
-	return parsePeerMessage(buf[:n])
+
+	pm := PeerMessage{
+		Length: binary.BigEndian.Uint32(lengthBuf),
+	}
+
+	buf := make([]byte, pm.Length)
+	_, err = io.ReadFull(reader, buf)
+	check(err)
+
+	pm.ID = buf[0]
+	pm.Payload = buf[1:]
+	return pm
 }
 
-func (p *Peer) DownloadPiece(output io.Writer, pieceIndex int64, pieceLength int) {
+func (p *Peer) GenerateRequestBlock(index uint32, begin uint32, length uint32) PeerMessage {
+	message := PeerMessage{
+		ID:      Request,
+		Payload: make([]byte, 12),
+		Length:  12,
+	}
+	binary.BigEndian.PutUint32(message.Payload[0:4], index)
+	binary.BigEndian.PutUint32(message.Payload[4:8], begin)
+	binary.BigEndian.PutUint32(message.Payload[8:12], length)
+	return message
+}
+
+func (p *Peer) fetchBlock(pieceIndex uint32, begin uint32, length uint32) []byte {
+	requestMessage := p.GenerateRequestBlock(pieceIndex, begin, length)
+	_, err := p.conn.Write(requestMessage.Generate())
+	check(err)
+
+	// Wait for "piece" message
+	message := p.ReadMessage()
+	Assert(message.ID == Piece, fmt.Sprintf("Expected Piece message, but got: %+v\n", message))
+	fmt.Printf("Received piece message with length: %d\n", message.Length)
+
+	return message.Payload
+}
+
+func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
+	numBlocks := (pieceLength + blockSize - 1) / blockSize
+	blocks := make([][]byte, numBlocks)
+	for i := uint32(0); i < numBlocks; i++ {
+		length := blockSize
+		if i == numBlocks-1 {
+			fmt.Printf("Last block of piece %d has length: %d, calculation %d - %d*%d\n", pieceIndex, length, pieceLength, i, blockSize)
+			length = pieceLength - i*blockSize
+		}
+		fmt.Printf("Fetching block %d of %d of length: %d\n", i+1, numBlocks, length)
+		block := p.fetchBlock(pieceIndex, i*blockSize, length)
+		blocks[i] = block
+	}
+
+	return blocks
+}
+func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32, pieceLength uint32) {
 	p.connect() // Ensure the connection is established
 	p.Handshake(p.InfoResult)
 	defer p.conn.Close()
 
 	// Read initial bitfield message
 	bitfieldMessage := p.ReadMessage()
-	Assert(bitfieldMessage.ID == int(Bitfield), "Expected Bitfield message")
+	Assert(bitfieldMessage.ID == Bitfield, "Expected Bitfield message")
 	fmt.Printf("Bitfield: %+v\n", bitfieldMessage)
 
+	// Send interested message
+	interestedMessage := PeerMessage{
+		ID:      Interested,
+		Payload: []byte{},
+	}.Generate()
+	p.conn.Write(interestedMessage)
+
+	// Wait for unchoke message
+	message := p.ReadMessage()
+	Assert(message.ID == Unchoke, "Expected Unchoke message")
+
+	fmt.Printf("Starting to request piece for torrent: %+v and with index: %d and piece length: %d\n", p.InfoResult, pieceIndex, pieceLength)
+	blocks := p.fetchBlocks(pieceIndex, pieceLength)
+	n, err := output.Write(bytes.Join(blocks, []byte{}))
+	check(err)
+	fmt.Printf("Wrote %d bytes to output\n", n)
 }
 
 type HandshakeResult struct {
