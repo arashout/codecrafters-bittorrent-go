@@ -81,6 +81,7 @@ func (p *Peer) connect() {
 	if p.conn != nil {
 		return
 	}
+	fmt.Printf("Connecting to %s\n", p.address.String())
 	conn, err := net.Dial("tcp", p.address.String())
 	check(err)
 	p.conn = conn
@@ -148,7 +149,7 @@ func (p *Peer) fetchBlock(pieceIndex uint32, begin uint32, length uint32) []byte
 	Assert(message.ID == Piece, fmt.Sprintf("Expected Piece message, but got: %+v\n", message))
 	fmt.Printf("Received piece message with length: %d\n", message.Length)
 
-	return message.Payload
+	return message.Payload[8:] // Skip the first 8 bytes (index, begin), the rest is the block data
 }
 
 func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
@@ -190,7 +191,7 @@ func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32, pieceLength ui
 
 	fmt.Printf("Starting to request piece for torrent: %+v and with index: %d and piece length: %d\n", p.InfoResult, pieceIndex, pieceLength)
 	blocks := p.fetchBlocks(pieceIndex, pieceLength)
-	n, err := output.Write(bytes.Join(blocks, []byte{}))
+	n, err := output.Write(bytes.Join(blocks, nil))
 	check(err)
 	fmt.Printf("Wrote %d bytes to output\n", n)
 }
