@@ -159,7 +159,6 @@ func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
 	for i := uint32(0); i < numBlocks; i++ {
 		length := blockSize
 		if i == numBlocks-1 {
-			fmt.Printf("Last block of piece %d has length: %d, calculation %d - %d*%d\n", pieceIndex, length, pieceLength, i, blockSize)
 			length = pieceLength - i*blockSize
 		}
 		fmt.Printf("Fetching block %d of %d of length: %d\n", i+1, numBlocks, length)
@@ -169,11 +168,8 @@ func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
 
 	return blocks
 }
-func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32) {
-	p.connect() // Ensure the connection is established
-	p.Handshake(p.InfoResult)
-	defer p.conn.Close()
 
+func (p *Peer) InitialDownloadPieceHandshake() {
 	// Read initial bitfield message
 	bitfieldMessage := p.ReadMessage()
 	Assert(bitfieldMessage.ID == Bitfield, "Expected Bitfield message")
@@ -189,7 +185,8 @@ func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32) {
 	// Wait for unchoke message
 	message := p.ReadMessage()
 	Assert(message.ID == Unchoke, "Expected Unchoke message")
-
+}
+func (p *Peer) DownloadPiece(pieceIndex uint32) []byte {
 	// We need to determine the piece length, since the last  piece may be shorter than the rest
 	torrent := p.InfoResult
 	pieceLength := torrent.Info.PieceLength
@@ -201,9 +198,7 @@ func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32) {
 
 	fmt.Printf("Starting to request piece for torrent: %+v and with index: %d and piece length: %d\n", p.InfoResult, pieceIndex, pieceLength)
 	blocks := p.fetchBlocks(pieceIndex, pieceLength)
-	n, err := output.Write(bytes.Join(blocks, nil))
-	check(err)
-	fmt.Printf("Wrote %d bytes to output\n", n)
+	return bytes.Join(blocks, nil)
 }
 
 type HandshakeResult struct {

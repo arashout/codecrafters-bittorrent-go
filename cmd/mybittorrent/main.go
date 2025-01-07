@@ -56,6 +56,10 @@ type MetaInfoInfo struct {
 	Pieces      string `bencode:"pieces"`
 }
 
+func (info MetaInfoInfo) PiecesCount() int {
+	return len(info.Pieces) / 20
+}
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
@@ -134,9 +138,24 @@ func main() {
 		torrentFile := args[0]
 		pieceIndex := args[1]
 
-		pieceIndexInt, err := strconv.ParseInt(pieceIndex, 10, 32)
+		pieceIndexInt, err := strconv.ParseUint(pieceIndex, 10, 32)
 		check(err)
-		downloadPiece(torrentFile, *outputFilename, pieceIndexInt)
+		DownloadPiece(torrentFile, *outputFilename, uint32(pieceIndexInt))
+	case "download":
+		// -o <output_file> <torrent_file>
+		fs := flag.NewFlagSet("download", flag.ExitOnError)
+		outputFilename := fs.String("o", "", "Output filename")
+		// Parse flags starting AFTER the subcommand name
+		fs.Parse(os.Args[2:])
+
+		// Now fs.Args() holds the positional args AFTER we parse flags
+		args := fs.Args()
+		if len(args) < 1 {
+			fmt.Println("Usage: download -o <output> <torrent_file>")
+			os.Exit(1)
+		}
+		torrentFile := args[0]
+		DownloadFile(torrentFile, *outputFilename)
 
 	default:
 		fmt.Println("Unknown command: " + command)
