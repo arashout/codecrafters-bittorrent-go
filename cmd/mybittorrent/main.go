@@ -50,9 +50,9 @@ type MetaInfoFile struct {
 	Info     MetaInfoInfo `bencode:"info"`
 }
 type MetaInfoInfo struct {
-	Length      int    `bencode:"length"`
+	Length      uint32 `bencode:"length"`
 	Name        string `bencode:"name"`
-	PieceLength int    `bencode:"piece length"`
+	PieceLength uint32 `bencode:"piece length"`
 	Pieces      string `bencode:"pieces"`
 }
 

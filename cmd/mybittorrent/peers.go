@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,7 +57,7 @@ const (
 func (p PeerMessage) Generate() []byte {
 	length := 5 + len(p.Payload) // 4 bytes for length, 1 byte for ID, and variable length for payload
 	buf := make([]byte, length)
-	binary.BigEndian.PutUint32(buf[0:4], uint32(length))
+	binary.BigEndian.PutUint32(buf[0:4], uint32(length-4)) // Ignore the actual length prefix
 	buf[4] = byte(p.ID)
 	copy(buf[5:], p.Payload)
 	return buf
@@ -153,7 +154,7 @@ func (p *Peer) fetchBlock(pieceIndex uint32, begin uint32, length uint32) []byte
 }
 
 func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
-	numBlocks := (pieceLength + blockSize - 1) / blockSize
+	numBlocks := uint32(math.Ceil(float64(pieceLength) / float64(blockSize)))
 	blocks := make([][]byte, numBlocks)
 	for i := uint32(0); i < numBlocks; i++ {
 		length := blockSize
@@ -168,7 +169,7 @@ func (p *Peer) fetchBlocks(pieceIndex uint32, pieceLength uint32) [][]byte {
 
 	return blocks
 }
-func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32, pieceLength uint32) {
+func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32) {
 	p.connect() // Ensure the connection is established
 	p.Handshake(p.InfoResult)
 	defer p.conn.Close()
@@ -188,6 +189,15 @@ func (p *Peer) DownloadPiece(output io.Writer, pieceIndex uint32, pieceLength ui
 	// Wait for unchoke message
 	message := p.ReadMessage()
 	Assert(message.ID == Unchoke, "Expected Unchoke message")
+
+	// We need to determine the piece length, since the last  piece may be shorter than the rest
+	torrent := p.InfoResult
+	pieceLength := torrent.Info.PieceLength
+	pieceCnt := uint32(math.Ceil(float64(torrent.Info.Length) / float64(pieceLength)))
+	if pieceIndex == pieceCnt-1 {
+		pieceLength = torrent.Info.Length % torrent.Info.PieceLength
+		fmt.Printf("Last piece has length: %d\n", pieceLength)
+	}
 
 	fmt.Printf("Starting to request piece for torrent: %+v and with index: %d and piece length: %d\n", p.InfoResult, pieceIndex, pieceLength)
 	blocks := p.fetchBlocks(pieceIndex, pieceLength)
@@ -214,7 +224,7 @@ func peers(file *os.File) PeersResult {
 	params.Add("port", "6881")
 	params.Add("uploaded", "0")
 	params.Add("downloaded", "0")
-	params.Add("left", strconv.Itoa(infoRes.MetaInfoFile.Info.Length))
+	params.Add("left", strconv.FormatUint(uint64(infoRes.MetaInfoFile.Info.Length), 10))
 	params.Add("compact", "1")
 	finalURL := fmt.Sprintf("%s?%s", infoRes.Announce, params.Encode())
 
