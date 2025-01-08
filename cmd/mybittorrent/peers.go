@@ -69,6 +69,10 @@ type Peer struct {
 	ID      []byte
 	conn    net.Conn
 	InfoResult
+
+	// Some state
+	HandshakeCompleted           bool
+	InterestedHandshakeCompleted bool
 }
 
 func NewPeer(address PeerAddress, infoRes InfoResult) *Peer {
@@ -102,6 +106,8 @@ func (p *Peer) Handshake(infoRes InfoResult) HandshakeResult {
 	resp := make([]byte, 68)
 	_, err = p.conn.Read(resp)
 	check(err)
+
+	p.HandshakeCompleted = true
 
 	// Read the response to get the peer ID
 	return HandshakeResult{
@@ -185,6 +191,8 @@ func (p *Peer) InitialDownloadPieceHandshake() {
 	// Wait for unchoke message
 	message := p.ReadMessage()
 	Assert(message.ID == Unchoke, "Expected Unchoke message")
+
+	p.InterestedHandshakeCompleted = true
 }
 func (p *Peer) DownloadPiece(pieceIndex uint32) []byte {
 	// We need to determine the piece length, since the last  piece may be shorter than the rest

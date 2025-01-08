@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 func verifyPiece(piece []byte, pieceIndex uint32, torrent MetaInfoFile) bool {
@@ -56,31 +57,51 @@ func DownloadFile(torrentFile string, outputFile string) {
 
 	peersRes := peers(file)
 	// Right now we're just going to pick the first peer
-	peerAddress := peersRes.Peers[0]
+	peers := make([]*Peer, len(peersRes.Peers))
 
-	p := NewPeer(
-		PeerAddress{
-			IP:   peerAddress.IP,
-			Port: uint16(peerAddress.Port),
-		}, peersRes.InfoResult,
-	)
-
-	p.connect()
-	defer p.conn.Close()
-	p.Handshake(p.InfoResult)
 	// For each piece in the torrent file, download it, write to a separate file with a suffix with the piece index
 	// Combime them after verifying the hashes
 	pieceCount := peersRes.InfoResult.MetaInfoFile.Info.PiecesCount()
-	p.InitialDownloadPieceHandshake()
-	for i := 0; i < pieceCount; i++ {
-		fmt.Printf("Downloading piece %d out of %d\n", i, pieceCount)
-		piece := p.DownloadPiece(uint32(i))
-		pieceFile, err := os.Create(fmt.Sprintf("%s.%d", outputFile, i))
-		check(err)
-		n, err := pieceFile.Write(piece)
-		check(err)
-		fmt.Printf("Wrote %d bytes to output\n", n)
+	pieceJobs := make(chan uint32, pieceCount)
+	wg := sync.WaitGroup{}
+	wg.Add(pieceCount)
+
+	workerFunc := func(peer *Peer) {
+		for {
+			pieceIndex := <-pieceJobs
+			piece := peer.DownloadPiece(pieceIndex)
+			if !verifyPiece(piece, pieceIndex, peer.MetaInfoFile) {
+				panic(fmt.Sprintf("Piece %d failed sha verification", pieceIndex))
+			}
+			pieceFile, err := os.Create(fmt.Sprintf("%s.%d", outputFile, pieceIndex))
+			check(err)
+			_, err = pieceFile.Write(piece)
+			check(err)
+			pieceFile.Close()
+			wg.Done()
+		}
 	}
+
+	for i, peer := range peersRes.Peers {
+		peers[i] = NewPeer(
+			PeerAddress{
+				IP:   peer.IP,
+				Port: uint16(peer.Port),
+			}, peersRes.InfoResult,
+		)
+		peers[i].connect()
+		peers[i].Handshake(peersRes.InfoResult)
+		peers[i].InitialDownloadPieceHandshake()
+	}
+
+	for i := 0; i < len(peers); i++ {
+		go workerFunc(peers[i])
+	}
+
+	for i := 0; i < pieceCount; i++ {
+		pieceJobs <- uint32(i)
+	}
+	wg.Wait()
 
 	// Combine the files
 	fmt.Printf("Opening %s\n", outputFile)
